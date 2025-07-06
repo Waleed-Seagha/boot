@@ -15,7 +15,7 @@ app.use(cors());
 app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, '../frontend')));
 
-const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
+const BASE_URL = process.env.BASE_URL || 'https://boot-lioj.onrender.com';
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 
 if (!TELEGRAM_BOT_TOKEN) {
@@ -77,7 +77,11 @@ bot.on('message', async (msg) => {
             delete userStates[chatId];
             if (err2) return bot.sendMessage(chatId, 'خطأ بإنشاء الاختبار.');
             const link = `${BASE_URL}/?quiz=${quiz_id}`;
-            bot.sendMessage(chatId, `هي رابط اختبارك الخاص:\n${link}`);
+            bot.sendMessage(chatId, `اختبارك جاهز! اضغط الزر بالأسفل للبدء:`, {
+              reply_markup: {
+                inline_keyboard: [[{ text: 'ابدأ الاختبار', url: link }]]
+              }
+            });
           });
         });
       } catch (e) {
