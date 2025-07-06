@@ -1,5 +1,6 @@
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
+const { dbErrorHandler } = require('./errorHandler');
 
 const db = new sqlite3.Database(path.join(__dirname, 'data.db'));
 
@@ -57,10 +58,29 @@ module.exports = {
     db.run('INSERT INTO questions (quiz_id, question, options, answer, explanation) VALUES (?, ?, ?, ?, ?)', [quiz_id, question, JSON.stringify(options), answer, explanation], cb);
   },
   getQuestions: (quiz_id, cb) => {
+    if (!quiz_id) {
+      return cb(new Error('معرف الاختبار مطلوب'));
+    }
+    
     db.all('SELECT * FROM questions WHERE quiz_id = ?', [quiz_id], (err, rows) => {
-      if (err) return cb(err);
-      rows.forEach(q => q.options = JSON.parse(q.options));
-      cb(null, rows);
+      if (err) {
+        dbErrorHandler(err, 'getQuestions', { quiz_id });
+        return cb(err);
+      }
+      
+      try {
+        if (rows && rows.length > 0) {
+          rows.forEach(q => {
+            if (q.options) {
+              q.options = JSON.parse(q.options);
+            }
+          });
+        }
+        cb(null, rows || []);
+      } catch (parseError) {
+        dbErrorHandler(parseError, 'parseQuestions', { quiz_id });
+        cb(new Error('خطأ في تحليل بيانات الأسئلة'));
+      }
     });
   },
   addResult: (quiz_id, user_answers, score, weaknesses, cb) => {

@@ -9,11 +9,23 @@ const { createQuiz, correctQuiz } = require('./quiz');
 const path = require('path');
 const pdfParse = require('pdf-parse');
 const axios = require('axios');
+const { logger, errorMiddleware, botErrorHandler } = require('./errorHandler');
 
 const app = express();
 app.use(cors());
 app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, '../frontend')));
+
+// Middleware للتحقق من صحة البيانات
+app.use((req, res, next) => {
+  if (req.method === 'POST' && req.headers['content-type'] !== 'application/json') {
+    return res.status(400).json({ error: 'Content-Type يجب أن يكون application/json' });
+  }
+  next();
+});
+
+// Middleware لمعالجة الأخطاء غير المتوقعة (يجب أن يكون في النهاية)
+app.use(errorMiddleware);
 
 const BASE_URL = process.env.BASE_URL || 'https://boot-lioj.onrender.com';
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
@@ -26,18 +38,15 @@ if (!TELEGRAM_BOT_TOKEN) {
 console.log('جاري تهيئة بوت تيليجرام...');
 const bot = new TelegramBot(TELEGRAM_BOT_TOKEN, { polling: true });
 
+// جعل البوت متاح عالمياً لمعالج الأخطاء
+global.bot = bot;
+
 bot.on('polling_error', (error) => {
-  console.error('خطأ في الاتصال مع تيليجرام:', error);
-  if (error.stack) {
-    console.error('Stack:', error.stack);
-  }
+  botErrorHandler(error);
 });
 
 bot.on('error', (error) => {
-  console.error('خطأ في البوت:', error);
-  if (error.stack) {
-    console.error('Stack:', error.stack);
-  }
+  botErrorHandler(error);
 });
 
 console.log('تم تهيئة البوت بنجاح!');
@@ -71,18 +80,41 @@ bot.on('message', async (msg) => {
       bot.sendMessage(chatId, 'جاري إنشاء الاختبار المؤتمت...');
       try {
         db.getUser(chatId, async (err, user) => {
+          // التحقق من وجود userStates[chatId] قبل الوصول إليه
+          if (!userStates[chatId]) {
+            console.error(`userStates[${chatId}] غير موجود عند محاولة إنشاء الاختبار`);
+            bot.sendMessage(chatId, 'حدث خطأ في حالة المستخدم. يرجى إرسال المحاضرة مرة أخرى.');
+            return;
+          }
+          
           const sourceText = userStates[chatId].pdfText || userStates[chatId].lectureText;
-          const questions = await generateQuiz(sourceText);
-          createQuiz(user.id, sourceText, questions, (err2, quiz_id) => {
+          if (!sourceText) {
+            console.error(`لا يوجد نص مصدر للمستخدم ${chatId}`);
+            bot.sendMessage(chatId, 'لم يتم العثور على النص المصدر. يرجى إرسال المحاضرة مرة أخرى.');
             delete userStates[chatId];
-            if (err2) return bot.sendMessage(chatId, 'خطأ بإنشاء الاختبار.');
-            const link = `${BASE_URL}/?quiz=${quiz_id}`;
-            bot.sendMessage(chatId, `اختبارك جاهز! اضغط الزر بالأسفل للبدء:`, {
-              reply_markup: {
-                inline_keyboard: [[{ text: 'ابدأ الاختبار', url: link }]]
+            return;
+          }
+          
+          try {
+            const questions = await generateQuiz(sourceText);
+            createQuiz(user.id, sourceText, questions, (err2, quiz_id) => {
+              delete userStates[chatId];
+              if (err2) {
+                console.error('خطأ في إنشاء الاختبار:', err2);
+                return bot.sendMessage(chatId, 'خطأ بإنشاء الاختبار. يرجى المحاولة مرة أخرى.');
               }
+              const link = `${BASE_URL}/?quiz=${quiz_id}`;
+              bot.sendMessage(chatId, `اختبارك جاهز! اضغط الزر بالأسفل للبدء:`, {
+                reply_markup: {
+                  inline_keyboard: [[{ text: 'ابدأ الاختبار', url: link }]]
+                }
+              });
             });
-          });
+          } catch (quizError) {
+            console.error('خطأ في توليد الأسئلة:', quizError);
+            delete userStates[chatId];
+            bot.sendMessage(chatId, 'حدث خطأ أثناء توليد الأسئلة. يرجى المحاولة مرة أخرى.');
+          }
         });
       } catch (e) {
         console.error('خطأ في إنشاء الاختبار:', e.message);
@@ -142,18 +174,54 @@ bot.on('message', async (msg) => {
 // API: جلب أسئلة الاختبار
 app.get('/api/quiz', (req, res) => {
   const quiz_id = req.query.quiz;
+  
+  if (!quiz_id) {
+    return res.status(400).json({ error: 'معرف الاختبار مطلوب' });
+  }
+  
   db.getQuestions(quiz_id, (err, questions) => {
-    if (err || !questions.length) return res.status(404).json({ error: 'اختبار غير موجود' });
-    res.json({ questions: questions.map(q => ({ question: q.question, options: q.options })) });
+    if (err) {
+      console.error('خطأ في قاعدة البيانات عند جلب الأسئلة:', err);
+      return res.status(500).json({ error: 'خطأ في الخادم' });
+    }
+    
+    if (!questions || !questions.length) {
+      return res.status(404).json({ error: 'اختبار غير موجود' });
+    }
+    
+    try {
+      res.json({ questions: questions.map(q => ({ question: q.question, options: q.options })) });
+    } catch (parseError) {
+      console.error('خطأ في تحليل البيانات:', parseError);
+      res.status(500).json({ error: 'خطأ في معالجة البيانات' });
+    }
   });
 });
 
 // API: تصحيح الاختبار
 app.post('/api/quiz', (req, res) => {
   const { quiz, answers } = req.body;
+  
+  if (!quiz || !answers) {
+    return res.status(400).json({ error: 'معرف الاختبار والإجابات مطلوبة' });
+  }
+  
+  if (!Array.isArray(answers)) {
+    return res.status(400).json({ error: 'الإجابات يجب أن تكون مصفوفة' });
+  }
+  
   correctQuiz(quiz, answers, (err, result) => {
-    if (err) return res.status(500).json({ error: 'خطأ في التصحيح' });
-    res.json(result);
+    if (err) {
+      console.error('خطأ في تصحيح الاختبار:', err);
+      return res.status(500).json({ error: 'خطأ في التصحيح' });
+    }
+    
+    try {
+      res.json(result);
+    } catch (parseError) {
+      console.error('خطأ في تحليل نتيجة التصحيح:', parseError);
+      res.status(500).json({ error: 'خطأ في معالجة النتيجة' });
+    }
   });
 });
 

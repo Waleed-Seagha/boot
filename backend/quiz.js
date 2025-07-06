@@ -1,5 +1,6 @@
 const { v4: uuidv4 } = require('uuid');
 const db = require('./db');
+const { logger } = require('./errorHandler');
 
 function createQuiz(user_id, lecture, questions, cb) {
   const quiz_id = uuidv4();
@@ -9,12 +10,16 @@ function createQuiz(user_id, lecture, questions, cb) {
     questions.forEach((q, i) => {
       db.addQuestion(quiz_id, q.question, q.options, q.answer, q.explanation, (err2) => {
         if (err2) {
-          console.error('خطأ عند إضافة سؤال:', q.question, err2);
+          logger.error('خطأ عند إضافة سؤال', err2, { 
+            quiz_id, 
+            questionIndex: i, 
+            question: q.question 
+          });
         } else {
-          console.log(`تمت إضافة سؤال (${i + 1}/${questions.length}) للـ quiz:`, quiz_id);
+          logger.info(`تمت إضافة سؤال (${i + 1}/${questions.length}) للـ quiz`, { quiz_id });
         }
         if (++done === questions.length) {
-          console.log('تم الانتهاء من إضافة جميع الأسئلة للـ quiz:', quiz_id);
+          logger.info('تم الانتهاء من إضافة جميع الأسئلة للـ quiz', { quiz_id });
           cb(null, quiz_id);
         }
       });

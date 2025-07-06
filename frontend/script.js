@@ -85,63 +85,111 @@ async function fetchQuiz(quizId) {
   showLoading('جاري تحميل الأسئلة...');
   try {
     const res = await fetch(`/api/quiz?quiz=${quizId}`);
-    if (!res.ok) throw new Error('لم يتم العثور على الاختبار أو حدث خطأ في التحميل.');
+    
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      const errorMessage = errorData.error || `خطأ في الخادم: ${res.status}`;
+      throw new Error(errorMessage);
+    }
+    
     const data = await res.json();
     console.log('البيانات المستلمة من الباكند:', data);
-    if (!data.questions || !data.questions.length) throw new Error('لا توجد أسئلة في هذا الاختبار.');
+    
+    if (!data.questions || !Array.isArray(data.questions) || data.questions.length === 0) {
+      throw new Error('لا توجد أسئلة في هذا الاختبار.');
+    }
+    
     console.log('عدد الأسئلة:', data.questions.length);
+    
+    // التحقق من صحة بيانات كل سؤال
     data.questions.forEach((q, i) => {
+      if (!q.question || !Array.isArray(q.options) || q.options.length === 0) {
+        throw new Error(`السؤال رقم ${i + 1} غير صالح`);
+      }
       console.log(`سؤال ${i + 1}:`, q.question);
       console.log('الخيارات:', q.options);
     });
-    // محاولة عرض الأسئلة يدويًا إذا لم تظهر
-    if (questionsArea && data.questions.length) {
-      questionsArea.innerHTML = '';
-      data.questions.forEach((q, i) => {
-        const optionsHtml = q.options.map((opt, j) => `
-          <label class=\"option-label\">
-            <input type=\"radio\" name=\"q${i}\" value=\"${j}\" required>
-            <span>${opt}</span>
-          </label>
-        `).join('');
-        questionsArea.innerHTML += `
-          <div class=\"question-card\">
-            <div class=\"question-title\">${i + 1}. ${q.question}</div>
-            <div class=\"options\">${optionsHtml}</div>
-          </div>
-        `;
-      });
-      submitBtn.style.display = 'block';
-    }
+    
     renderQuiz(data.questions);
   } catch (e) {
-    showError(e.message);
     console.error('خطأ أثناء جلب الأسئلة:', e);
+    let errorMessage = e.message;
+    
+    // تحسين رسائل الخطأ للمستخدم
+    if (e.name === 'TypeError' && e.message.includes('fetch')) {
+      errorMessage = 'فشل في الاتصال بالخادم. تحقق من اتصالك بالإنترنت.';
+    } else if (e.message.includes('404')) {
+      errorMessage = 'الاختبار غير موجود أو تم حذفه.';
+    } else if (e.message.includes('500')) {
+      errorMessage = 'خطأ في الخادم. يرجى المحاولة لاحقاً.';
+    }
+    
+    showError(errorMessage);
   }
 }
 
 // 8. إرسال الإجابات
 quizForm && quizForm.addEventListener('submit', async function(e) {
   e.preventDefault();
+  
+  // التحقق من أن جميع الأسئلة تمت الإجابة عليها
+  const formData = new FormData(quizForm);
+  const answeredQuestions = formData.getAll('q0').length; // عدد الأسئلة المجاب عليها
+  
+  if (answeredQuestions === 0) {
+    showError('يرجى الإجابة على جميع الأسئلة قبل الإرسال.');
+    return;
+  }
+  
   submitBtn.disabled = true;
   submitBtn.textContent = 'جاري التصحيح...';
+  
   const quizId = getQuizId();
-  const formData = new FormData(quizForm);
   const answers = [];
-  for (let [name, value] of formData.entries()) {
-    answers.push(Number(value));
-  }
+  
   try {
+    for (let [name, value] of formData.entries()) {
+      const answer = Number(value);
+      if (isNaN(answer) || answer < 0) {
+        throw new Error('إجابة غير صحيحة في أحد الأسئلة');
+      }
+      answers.push(answer);
+    }
+    
     const res = await fetch('/api/quiz', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ quiz: quizId, answers })
     });
-    if (!res.ok) throw new Error('حدث خطأ أثناء التصحيح.');
+    
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      const errorMessage = errorData.error || `خطأ في التصحيح: ${res.status}`;
+      throw new Error(errorMessage);
+    }
+    
     const data = await res.json();
+    
+    // التحقق من صحة البيانات المستلمة
+    if (!data || typeof data.score !== 'number' || typeof data.total !== 'number') {
+      throw new Error('بيانات النتيجة غير صحيحة');
+    }
+    
     renderResult(data);
   } catch (e) {
-    showError(e.message);
+    console.error('خطأ أثناء إرسال الإجابات:', e);
+    let errorMessage = e.message;
+    
+    // تحسين رسائل الخطأ للمستخدم
+    if (e.name === 'TypeError' && e.message.includes('fetch')) {
+      errorMessage = 'فشل في الاتصال بالخادم. تحقق من اتصالك بالإنترنت.';
+    } else if (e.message.includes('400')) {
+      errorMessage = 'بيانات الإجابات غير صحيحة. يرجى المحاولة مرة أخرى.';
+    } else if (e.message.includes('500')) {
+      errorMessage = 'خطأ في الخادم أثناء التصحيح. يرجى المحاولة لاحقاً.';
+    }
+    
+    showError(errorMessage);
   } finally {
     submitBtn.disabled = false;
     submitBtn.textContent = 'إرسال الإجابات';
@@ -163,6 +211,22 @@ window.addEventListener('DOMContentLoaded', () => {
   } catch (e) {
     console.error('خطأ في بدء التنفيذ:', e);
     showError('حدث خطأ غير متوقع. يرجى إعادة تحميل الصفحة.');
+  }
+});
+
+// 10. معالجة الأخطاء العامة
+window.addEventListener('error', (e) => {
+  console.error('خطأ عام في الصفحة:', e.error);
+  if (statusDiv) {
+    showError('حدث خطأ غير متوقع في الصفحة. يرجى إعادة تحميل الصفحة.');
+  }
+});
+
+// 11. معالجة أخطاء الشبكة
+window.addEventListener('unhandledrejection', (e) => {
+  console.error('وعد مرفوض غير معالج:', e.reason);
+  if (statusDiv) {
+    showError('فشل في الاتصال بالخادم. تحقق من اتصالك بالإنترنت.');
   }
 });
 
