@@ -36,11 +36,11 @@ function correctQuiz(quiz_id, user_answers, cb) {
         explanation: q.explanation
       });
     });
-    // نقاط الضعف: جمل توجيهية لكل سؤال أخطأ فيه المستخدم
-    let weaknesses = mistakes.map(
-      m => `ننصحك بمراجعة هذا السؤال: "${m.question}"
-الشرح: ${m.explanation || 'راجع الإجابة الصحيحة.'}`
-    ).join('\n\n');
+    // نقاط الضعف: قائمة بعناوين الأسئلة فقط بدون شرح
+    let weaknesses = '';
+    if (mistakes.length) {
+      weaknesses = 'ننصحك بمراجعة الأسئلة التالية:\n' + mistakes.map((m, idx) => `${idx + 1}- ${m.question}`).join('\n');
+    }
     db.addResult(quiz_id, user_answers, score, weaknesses, (err2) => {
       cb(null, { score, total: questions.length, mistakes, weaknesses });
     });
