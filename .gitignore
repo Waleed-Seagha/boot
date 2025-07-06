@@ -1,0 +1,18 @@
+# Node modules
+node_modules/
+
+# Logs
+*.log
+
+# dotenv environment variables
+.env
+
+# Database files
+backend/data.db
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# npm lock file (اختياري، إذا كنت تفضل عدم رفعه)
+# package-lock.json 
