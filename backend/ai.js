@@ -103,9 +103,24 @@ async function generateQuiz(lecture) {
     aiErrorHandler(error, 'generateQuiz', { lectureLength: lecture.length });
     
     if (error.response) {
-      throw new Error(`خطأ في خدمة الذكاء الاصطناعي: ${error.response.status}`);
+      const status = error.response.status;
+      
+      // معالجة خاصة لأخطاء محددة
+      if (status === 429) {
+        throw new Error('تم تجاوز الحد المسموح من الطلبات. يرجى المحاولة بعد دقائق قليلة.');
+      } else if (status === 401) {
+        throw new Error('مفتاح API غير صحيح أو منتهي الصلاحية.');
+      } else if (status === 403) {
+        throw new Error('غير مصرح بالوصول لخدمة الذكاء الاصطناعي.');
+      } else if (status >= 500) {
+        throw new Error('خدمة الذكاء الاصطناعي غير متاحة حالياً. يرجى المحاولة لاحقاً.');
+      } else {
+        throw new Error(`خطأ في خدمة الذكاء الاصطناعي: ${status}`);
+      }
     } else if (error.code === 'ECONNABORTED') {
       throw new Error('انتهت مهلة الاتصال بخدمة الذكاء الاصطناعي');
+    } else if (error.code === 'ENOTFOUND') {
+      throw new Error('فشل في الاتصال بخدمة الذكاء الاصطناعي');
     } else {
       throw error;
     }

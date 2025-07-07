@@ -15,6 +15,7 @@ db.serialize(() => {
     id TEXT PRIMARY KEY,
     user_id INTEGER,
     lecture TEXT,
+    sender_name TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(user_id) REFERENCES users(id)
   )`);
@@ -48,8 +49,8 @@ module.exports = {
   getUser: (telegram_id, cb) => {
     db.get('SELECT * FROM users WHERE telegram_id = ?', [telegram_id], cb);
   },
-  addQuiz: (quiz_id, user_id, lecture, cb) => {
-    db.run('INSERT INTO quizzes (id, user_id, lecture) VALUES (?, ?, ?)', [quiz_id, user_id, lecture], cb);
+  addQuiz: (quiz_id, user_id, lecture, sender_name, cb) => {
+    db.run('INSERT INTO quizzes (id, user_id, lecture, sender_name) VALUES (?, ?, ?, ?)', [quiz_id, user_id, lecture, sender_name], cb);
   },
   getQuiz: (quiz_id, cb) => {
     db.get('SELECT * FROM quizzes WHERE id = ?', [quiz_id], cb);
@@ -91,6 +92,15 @@ module.exports = {
       if (err) return cb(err);
       if (row) row.user_answers = JSON.parse(row.user_answers);
       cb(null, row);
+    });
+  },
+  getAllUsers: (cb) => {
+    db.all('SELECT * FROM users', [], cb);
+  },
+  getQuizzesCount: (cb) => {
+    db.get('SELECT COUNT(*) as count FROM quizzes', [], (err, row) => {
+      if (err) return cb(err);
+      cb(null, row.count);
     });
   }
 }; 

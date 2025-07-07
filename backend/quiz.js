@@ -2,9 +2,9 @@ const { v4: uuidv4 } = require('uuid');
 const db = require('./db');
 const { logger } = require('./errorHandler');
 
-function createQuiz(user_id, lecture, questions, cb) {
+function createQuiz(user_id, lecture, questions, sender_name, cb) {
   const quiz_id = uuidv4();
-  db.addQuiz(quiz_id, user_id, lecture, (err) => {
+  db.addQuiz(quiz_id, user_id, lecture, sender_name, (err) => {
     if (err) return cb(err);
     let done = 0;
     questions.forEach((q, i) => {

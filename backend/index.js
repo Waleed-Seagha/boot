@@ -97,7 +97,7 @@ bot.on('message', async (msg) => {
           
           try {
             const questions = await generateQuiz(sourceText);
-            createQuiz(user.id, sourceText, questions, (err2, quiz_id) => {
+            createQuiz(user.id, sourceText, questions, name, (err2, quiz_id) => {
               delete userStates[chatId];
               if (err2) {
                 console.error('خطأ في إنشاء الاختبار:', err2);
@@ -174,27 +174,26 @@ bot.on('message', async (msg) => {
 // API: جلب أسئلة الاختبار
 app.get('/api/quiz', (req, res) => {
   const quiz_id = req.query.quiz;
-  
   if (!quiz_id) {
     return res.status(400).json({ error: 'معرف الاختبار مطلوب' });
   }
-  
-  db.getQuestions(quiz_id, (err, questions) => {
-    if (err) {
-      console.error('خطأ في قاعدة البيانات عند جلب الأسئلة:', err);
-      return res.status(500).json({ error: 'خطأ في الخادم' });
-    }
-    
-    if (!questions || !questions.length) {
+  db.getQuiz(quiz_id, (err, quiz) => {
+    if (err || !quiz) {
       return res.status(404).json({ error: 'اختبار غير موجود' });
     }
-    
-    try {
-      res.json({ questions: questions.map(q => ({ question: q.question, options: q.options })) });
-    } catch (parseError) {
-      console.error('خطأ في تحليل البيانات:', parseError);
-      res.status(500).json({ error: 'خطأ في معالجة البيانات' });
-    }
+    db.getQuestions(quiz_id, (err2, questions) => {
+      if (err2 || !questions || !questions.length) {
+        return res.status(404).json({ error: 'اختبار غير موجود' });
+      }
+      try {
+        res.json({
+          questions: questions.map(q => ({ question: q.question, options: q.options })),
+          sender_name: quiz.sender_name || ''
+        });
+      } catch (parseError) {
+        res.status(500).json({ error: 'خطأ في معالجة البيانات' });
+      }
+    });
   });
 });
 
@@ -222,6 +221,22 @@ app.post('/api/quiz', (req, res) => {
       console.error('خطأ في تحليل نتيجة التصحيح:', parseError);
       res.status(500).json({ error: 'خطأ في معالجة النتيجة' });
     }
+  });
+});
+
+// --- API: إحصائيات الإدارة ---
+app.get('/api/admin/stats', (req, res) => {
+  // جلب عدد المستخدمين وأسمائهم
+  db.getAllUsers((err, users) => {
+    if (err) return res.status(500).json({ error: 'DB error' });
+    db.getQuizzesCount((err2, quizzesCount) => {
+      if (err2) return res.status(500).json({ error: 'DB error' });
+      res.json({
+        usersCount: users.length,
+        usersNames: users.map(u => u.name),
+        quizzesCount: quizzesCount
+      });
+    });
   });
 });
 
