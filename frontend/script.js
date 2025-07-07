@@ -49,9 +49,6 @@ function renderQuiz(questions) {
       `;
     });
     submitBtn.style.display = 'block';
-    // إظهار زر تحميل الأسئلة PDF
-    const downloadBtn = document.getElementById('download-questions-pdf');
-    if (downloadBtn) downloadBtn.style.display = 'block';
     // حفظ الأسئلة الحالية للاستخدام في التصدير
     window.__currentQuizQuestions = questions;
     console.log('تم عرض الأسئلة في الصفحة.');
@@ -81,9 +78,9 @@ function renderResult(result, senderName) {
     html += '<div class="success">أحسنت! كل إجاباتك صحيحة 🎉</div>';
   }
   // إضافة اسم المُرسل أسفل النتيجة إذا كان موجودًا
-  if (senderName) {
-    html += `<div style="margin-top:24px; color:#0D9B0A; font-weight:bold; text-align:center; font-size:1.1em;">هذا الاختبار من إعداد الطالب: <span style="color:#12F906;">${senderName}</span></div>`;
-  }
+  //if (senderName) {
+    //html += `<div style="margin-top:24px; color:#0D9B0A; font-weight:bold; text-align:center; font-size:1.1em;">هذا الاختبار من إعداد الطالب: <span style="color:#12F906;">${senderName}</span></div>`;
+ // }
   resultBox.innerHTML = html;
   resultBox.style.display = 'block';
   quizBox.style.display = 'none';
@@ -268,39 +265,6 @@ document.head.insertAdjacentHTML('beforeend', `
     }
   </style>
 `);
-
-// زر تحميل الأسئلة PDF
-const downloadQuestionsBtn = document.getElementById('download-questions-pdf');
-if (downloadQuestionsBtn) {
-  downloadQuestionsBtn.addEventListener('click', function(e) {
-    e.preventDefault();
-    // تجهيز HTML للأسئلة فقط
-    const questions = window.__currentQuizQuestions;
-    if (!questions || !questions.length) return;
-    // بناء HTML RTL للأسئلة
-    let html = `<div style='direction:rtl; font-family:Cairo,Arial,sans-serif; text-align:right;'>`;
-    html += `<h2 style='color:#12F906;'>أسئلة الاختبار</h2>`;
-    questions.forEach((q, i) => {
-      html += `<div style='margin-bottom:18px; padding:10px 8px; border-bottom:1px solid #eee;'>`;
-      html += `<div style='font-weight:bold; color:#0D9B0A;'>${i + 1}. ${q.question}</div>`;
-      html += `<ul style='list-style:decimal inside; margin:8px 0 0 0; padding:0;'>`;
-      q.options.forEach((opt, j) => {
-        html += `<li style='margin-bottom:4px;'>${opt}</li>`;
-      });
-      html += `</ul></div>`;
-    });
-    html += `</div>`;
-    // إعداد خيارات html2pdf
-    const opt = {
-      margin:       0.5,
-      filename:     'quiz-questions.pdf',
-      image:        { type: 'jpeg', quality: 0.98 },
-      html2canvas:  { scale: 2 },
-      jsPDF:        { unit: 'cm', format: 'a4', orientation: 'portrait' }
-    };
-    html2pdf().set(opt).from(html).save();
-  });
-}
 
 // --- لوحة تحكم الإدارة ---
 function showAdminPage() {
